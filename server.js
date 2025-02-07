@@ -152,8 +152,8 @@ app.get('/end/:md_timetable_startid', (req, res) => {
   });
 });
 
-app.get('/search/:md_timetable_startid/:md_timetable_endid', (req, res) => {
-  const { md_timetable_startid, md_timetable_endid } = req.params; // รับค่า startid และ endid
+app.get('/search/:md_timetable_startid/:md_timetable_endid/:md_boatstop_date', (req, res) => {
+  const { md_timetable_startid, md_timetable_endid, md_boatstop_date} = req.params; // รับค่า startid และ endid
 
   const query = `
     SELECT 
@@ -200,13 +200,18 @@ app.get('/search/:md_timetable_startid/:md_timetable_endid', (req, res) => {
       md_package AS i
     ON 
       a.md_timetable_packageid = i.md_package_id
+    INNER JOIN
+      md_boatstop AS j
+    ON
+      a.md_timetable_id = j.md_boatstop_timetableid
     WHERE 
-      a.md_timetable_startid = ? 
-      AND a.md_timetable_endid = ?
+      a.md_timetable_startid = ? AND
+      a.md_timetable_endid = ? AND
+      j.md_boatstop_date !=  ?
       LIMIT 100
   `;
 
-  pool.query(query, [md_timetable_startid, md_timetable_endid], (err, results) => {
+  pool.query(query, [md_timetable_startid, md_timetable_endid, md_boatstop_date], (err, results) => {
     if (err) {
       console.error('Error executing query:', err);
       res.status(500).json({ status: 'error', message: 'Error retrieving data' });
