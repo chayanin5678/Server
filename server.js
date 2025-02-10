@@ -84,7 +84,7 @@ app.get('/users', (req, res) => {
 });
 
 app.get('/start', (req, res) => {
-  pool.query('SELECT DISTINCT a.md_timetable_startid, b.md_location_nameeng, c.sys_countries_nameeng FROM md_timetable as a INNER JOIN md_location as b ON a.md_timetable_startid = b.md_location_id INNER JOIN sys_countries AS c ON b.md_location_countriesid = c.sys_countries_id', (err, results) => {
+  pool.query('SELECT  a.md_location_id, a.md_location_nameeng, b.sys_countries_nameeng FROM md_location as a INNER JOIN sys_countries AS b ON a.md_location_countriesid = b.sys_countries_id', (err, results) => {
     if (err) {
       res.status(500).json({ status: 'error', message: 'Error retrieving data' });
     } else {
@@ -98,7 +98,7 @@ app.get('/end/:md_timetable_startid', (req, res) => {
 
   const query = `
     SELECT 
-      DISTINCT a.md_timetable_endid, 
+     DISTINCT a.md_timetable_endid, 
       b.md_location_nameeng,
       c.sys_countries_nameeng
     FROM 
@@ -110,7 +110,7 @@ app.get('/end/:md_timetable_startid', (req, res) => {
     INNER JOIN
       sys_countries AS c
     ON
-      b.md_location_id = c.sys_countries_id
+      b.md_location_countriesid = c.sys_countries_id
     WHERE 
       a.md_timetable_startid = ?
   `;
@@ -125,32 +125,7 @@ app.get('/end/:md_timetable_startid', (req, res) => {
   });
 });
 
-app.get('/end/:md_timetable_startid', (req, res) => {
-  const { md_timetable_startid } = req.params;
 
-  const query = `
-    SELECT 
-      DISTINCT a.md_timetable_endid, 
-      b.md_location_nameeng 
-    FROM 
-      md_timetable AS a 
-    INNER JOIN 
-      md_location AS b 
-    ON 
-      a.md_timetable_endid = b.md_location_id 
-    WHERE 
-      a.md_timetable_startid = ?
-  `;
-
-  pool.query(query, [md_timetable_startid], (err, results) => {
-    if (err) {
-      console.error('Error executing query:', err);
-      res.status(500).json({ status: 'error', message: 'Error retrieving data' });
-    } else {
-      res.status(200).json({ status: 'success', data: results });
-    }
-  });
-});
 
 app.get('/search/:md_timetable_startid/:md_timetable_endid/:md_boatstop_date', (req, res) => {
   const { md_timetable_startid, md_timetable_endid, md_boatstop_date} = req.params; // รับค่า startid และ endid
