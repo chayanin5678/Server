@@ -209,7 +209,8 @@ app.get('/timetable/:md_timetable_id', (req, res) => {
       e.md_pier_nameeng AS startpier_name,
       f.md_location_nameeng AS endpoint_name,
       g.md_pier_nameeng AS endpier_name,
-      h.md_package_nameeng
+      h.md_package_nameeng,
+      i.md_boattype_nameeng
     FROM  
       md_timetable AS a
     INNER JOIN 
@@ -239,7 +240,11 @@ app.get('/timetable/:md_timetable_id', (req, res) => {
     INNER JOIN
       md_package AS h
     ON
-      a.md_timetable_packageid = h.md_package_id 
+      a.md_timetable_packageid = h.md_package_id
+    INNER JOIN 
+      md_boattype AS i
+    ON
+      a.md_timetable_boattypeid = i.md_boattype_id 
     WHERE
       md_timetable_id = ?
   `;
@@ -361,6 +366,26 @@ app.get('/dropoff/:md_timetable_companyid/:md_timetable_pierend/:md_dropoff_cart
   `;
 
   pool.query(query, [md_timetable_companyid, md_timetable_pierend, md_dropoff_cartypeid], (err, results) => {
+    if (err) {
+      console.error('Error executing query:', err);
+      res.status(500).json({ status: 'error', message: 'Error retrieving data' });
+    } else {
+      res.status(200).json({ status: 'success', data: results });
+    }
+  });
+});
+
+app.get('/telephone', (req, res) => {
+
+
+  const query = `
+    SELECT 
+      *
+    FROM 
+     sys_countries 
+  `;
+
+  pool.query(query, [], (err, results) => {
     if (err) {
       console.error('Error executing query:', err);
       res.status(500).json({ status: 'error', message: 'Error retrieving data' });
