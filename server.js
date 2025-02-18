@@ -1,4 +1,4 @@
-require('dotenv').config();
+
 const express = require('express');
 const mysql = require('mysql2');
 const cors = require('cors');
@@ -9,12 +9,14 @@ const port = process.env.PORT || 5000;
 const axios = require("axios");
 const bodyParser = require('body-parser');
 const { v4: uuidv4 } = require('uuid');
+const Omise = require("omise");
+require("dotenv").config();
 
 
 // เปิดใช้งาน CORS
 app.use(cors());
 app.use(bodyParser.json());
-
+app.use(express.json());
 
 // สร้าง MySQL connection pool
 const pool = mysql.createPool({
@@ -31,6 +33,49 @@ const pool = mysql.createPool({
 app.get('/', (req, res) => {
   res.send('Hello, Node.js with XAMPP!');
 });
+
+const omise = Omise({
+  publicKey: process.env.OMISE_PUBLIC_KEY, // ใส่ Public Key ของคุณ
+  secretKey: process.env.OMISE_SECRET_KEY, // ใส่ Secret Key ของคุณ
+});
+
+app.post("/create-token", async (req, res) => {
+  try {
+    const { card } = req.body;
+    
+    // สร้าง Omise Token ด้วยข้อมูลบัตร
+    const token = await omise.tokens.create({ card });
+
+    // ส่งกลับ token ที่สร้างได้ในรูปแบบ JSON
+    res.json({ success: true, token: token.id });
+  } catch (error) {
+    console.error("Error creating token:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+
+app.post("/charge", async (req, res) => {
+  try {
+    const { amount, token } = req.body;
+    if (!token) {
+      return res.status(400).json({ success: false, error: "Token is required" });
+    }
+
+    const charge = await omise.charges.create({
+      amount: amount * 100, // Omise ใช้หน่วยเป็น สตางค์ (100 = 1 บาท)
+      currency: "thb",
+      card: token,
+    });
+
+    res.json({ success: true, charge }); // ตรวจสอบว่าใช้ .json() และไม่ใช้ .send()
+  } catch (error) {
+    console.error('Error in charging: ', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+
 
 app.post("/register", async (req, res) => {
   const { email, password } = req.body;
