@@ -42,7 +42,7 @@ const omise = Omise({
 app.post("/create-token", async (req, res) => {
   try {
     const { card } = req.body;
-    
+
     // สร้าง Omise Token ด้วยข้อมูลบัตร
     const token = await omise.tokens.create({ card });
 
@@ -129,7 +129,7 @@ app.get('/users', (req, res) => {
 });
 
 app.get('/start', (req, res) => {
-  pool.query('SELECT  a.md_location_id, a.md_location_nameeng, b.sys_countries_nameeng FROM md_location as a INNER JOIN sys_countries AS b ON a.md_location_countriesid = b.sys_countries_id', (err, results) => {
+  pool.query('SELECT  a.md_location_id, a.md_location_nameeng, b.sys_countries_nameeng FROM md_location as a INNER JOIN sys_countries AS b ON a.md_location_countriesid = b.sys_countries_id ORDER BY a.md_location_id ASC ', (err, results) => {
     if (err) {
       res.status(500).json({ status: 'error', message: 'Error retrieving data' });
     } else {
@@ -173,7 +173,7 @@ app.get('/end/:md_timetable_startid', (req, res) => {
 
 
 app.get('/search/:md_timetable_startid/:md_timetable_endid/:md_boatstop_date', (req, res) => {
-  const { md_timetable_startid, md_timetable_endid, md_boatstop_date} = req.params; // รับค่า startid และ endid
+  const { md_timetable_startid, md_timetable_endid, md_boatstop_date } = req.params; // รับค่า startid และ endid
 
   const query = `
     SELECT 
