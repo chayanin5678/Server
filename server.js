@@ -63,12 +63,13 @@ app.post("/charge", async (req, res) => {
     }
 
     const charge = await omise.charges.create({
-      amount: amount * 100, // Omise ใช้หน่วยเป็น สตางค์ (100 = 1 บาท)
+      amount: amount * 100, 
       currency: "thb",
       card: token,
+      return_uri: "http://localhost:3000/success",
     });
 
-    res.json({ success: true, charge }); // ตรวจสอบว่าใช้ .json() และไม่ใช้ .send()
+    res.json({ success: true, charge }); 
   } catch (error) {
     console.error('Error in charging: ', error);
     res.status(500).json({ success: false, error: error.message });
@@ -428,6 +429,25 @@ app.get('/telephone', (req, res) => {
       *
     FROM 
      sys_countries 
+  `;
+
+  pool.query(query, [], (err, results) => {
+    if (err) {
+      console.error('Error executing query:', err);
+      res.status(500).json({ status: 'error', message: 'Error retrieving data' });
+    } else {
+      res.status(200).json({ status: 'success', data: results });
+    }
+  });
+});
+
+app.get('/bookingcode', (req, res) => {
+
+
+  const query = `
+    SELECT 
+    SUBSTRING(MAX(md_booking_code), 3) AS booking_code 
+    FROM md_booking;
   `;
 
   pool.query(query, [], (err, results) => {
