@@ -5,14 +5,14 @@ const cors = require('cors');
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const app = express();
+const crypto = require("crypto");
 const port = process.env.PORT || 5000;
 const axios = require("axios");
 const bodyParser = require('body-parser');
 const { v4: uuidv4 } = require('uuid');
 const Omise = require("omise");
 require("dotenv").config();
-
-
+let orderStatus = "Pending";
 // เปิดใช้งาน CORS
 app.use(cors());
 app.use(bodyParser.json());
@@ -39,6 +39,12 @@ const omise = Omise({
   secretKey: process.env.OMISE_SECRET_KEY, // ใส่ Secret Key ของคุณ
 });
 
+
+// สร้าง endpoint /order-status เพื่อส่งสถานะเป็น JSON กลับไปให้ Front-end
+app.get('/order-status', (req, res) => {
+  res.json({ status: orderStatus });
+});
+
 app.post("/create-token", async (req, res) => {
   try {
     const { card } = req.body;
@@ -62,19 +68,60 @@ app.post("/charge", async (req, res) => {
       return res.status(400).json({ success: false, error: "Token is required" });
     }
 
+    // คูณ amount กับ 100 เพื่อแปลงเป็นหน่วยสตางค์ (และใช้ parseInt เพื่อป้องกันการใช้ทศนิยม)
+    const amountInCents = parseInt(amount * 100, 10); // แปลงเป็นจำนวนเต็ม (integer)
+
     const charge = await omise.charges.create({
-      amount: amount * 100, 
+      amount: amountInCents,
       currency: "thb",
       card: token,
-      return_uri: "http://localhost:3000/success",
     });
 
-    res.json({ success: true, charge }); 
+    res.json({ success: true, charge });
   } catch (error) {
     console.error('Error in charging: ', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+app.post('/omise/webhook', (req, res) => {
+  const event = req.body;
+
+  // Verify the webhook signature to make sure the event is from Omise
+  const isValid = omiseClient.webhooks.isValidSignature(event, req.headers['x-omise-signature']);
+
+  if (!isValid) {
+    return res.status(400).send('Invalid webhook signature');
+  }
+
+  // Handle different types of events
+  switch (event.type) {
+    case 'charge.succeeded':
+      console.log('Charge succeeded:', event.data);
+      // Handle successful payment
+      break;
+    case 'charge.failed':
+      console.log('Charge failed:', event.data);
+      // Handle failed payment
+      break;
+    case 'customer.created':
+      console.log('Customer created:', event.data);
+      // Handle customer creation event
+      break;
+    case 'customer.updated':
+      console.log('Customer updated:', event.data);
+      // Handle customer update event
+      break;
+    default:
+      console.log('Unhandled event type:', event.type);
+  }
+
+  // Send a response back to Omise to acknowledge the webhook
+  res.status(200).send('Webhook received');
+});
+
+
+
 
 
 
