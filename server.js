@@ -507,6 +507,56 @@ app.get('/bookingcode', (req, res) => {
   });
 });
 
+app.post('/booking', (req, res) => {
+  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+  console.log("Client IP:", clientIp); // ✅ ใช้ console.log แทน print()
+
+  const {
+      md_booking_code, md_booking_companyid, 
+      md_booking_paymentid, md_booking_boattypeid, md_booking_country, 
+      md_booking_countrycode, md_booking_round, md_booking_timetableid, 
+      md_booking_tel, md_booking_email, md_booking_price, 
+      md_booking_total, md_booking_currency, md_booking_net, 
+      md_booking_adult, md_booking_child, md_booking_day, 
+      md_booking_month, md_booking_year, md_booking_time, 
+      md_booking_date, md_booking_departdate, md_booking_departtime
+  } = req.body;
+
+  const query = `
+      INSERT INTO md_booking (
+          md_booking_code, md_booking_companyid, 
+          md_booking_paymentid, md_booking_boattypeid, md_booking_country, 
+          md_booking_countrycode, md_booking_round, md_booking_timetableid, 
+          md_booking_tel, md_booking_email, md_booking_price, md_booking_total, 
+          md_booking_currency, md_booking_net, md_booking_adult, md_booking_child, 
+          md_booking_day, md_booking_month, md_booking_year, md_booking_time, 
+          md_booking_date, md_booking_departdate, md_booking_departtime, md_booking_ip ,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `;
+
+  const values = [
+      md_booking_code, md_booking_companyid, 
+      md_booking_paymentid, md_booking_boattypeid, md_booking_country, 
+      md_booking_countrycode, md_booking_round, md_booking_timetableid, 
+      md_booking_tel, md_booking_email, md_booking_price, 
+      md_booking_total, md_booking_currency, md_booking_net, 
+      md_booking_adult, md_booking_child, md_booking_day, 
+      md_booking_month, md_booking_year, md_booking_time, 
+      md_booking_date, md_booking_departdate, md_booking_departtime,
+      clientIp
+  ];
+
+  pool.query(query, values, (err, results) => {
+      if (err) {
+          console.error("Error executing query:", err);
+          res.status(500).json({ status: "error", message: "Database error" });
+      } else {
+          res.status(200).json({ status: "success", data: results });
+      }
+  });
+});
+
+
 // เริ่มต้นเซิร์ฟเวอร์
 app.listen(port, () => {
   console.log(`Server running on http://localhost:${port}`);
