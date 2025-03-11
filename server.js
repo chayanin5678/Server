@@ -11,12 +11,21 @@ const axios = require("axios");
 const bodyParser = require('body-parser');
 const { v4: uuidv4 } = require('uuid');
 const Omise = require("omise");
+const { MailerSend } = require('mailersend');
+const fs = require('fs');
+const path = require('path');
 require("dotenv").config();
 let orderStatus = "Pending";
 // เปิดใช้งาน CORS
 app.use(cors());
 app.use(bodyParser.json());
 app.use(express.json());
+app.use(express.json({ limit: '50mb' })); // Allow larger payloads
+app.use(bodyParser.json({ limit: '50mb' })); // For legacy bodyParser support
+app.use((req, res, next) => {
+  res.setHeader("ngrok-skip-browser-warning", "true"); // ✅ ข้าม Warning Page
+  next();
+});
 
 // สร้าง MySQL connection pool
 const pool = mysql.createPool({
@@ -39,6 +48,44 @@ const omise = Omise({
   secretKey: process.env.OMISE_SECRET_KEY, // ใส่ Secret Key ของคุณ
 });
 
+const mailerSend = new MailerSend({ apiKey: process.env.MAILERSEND_API_KEY });
+
+app.post('/send-email', async (req, res) => {
+  const { recipientEmail, subject, body, pdfUri } = req.body;
+
+  // Create the email object
+  const emailData = {
+    from: process.env.SENDER_EMAIL,
+    to: recipientEmail,
+    subject: subject,
+    text: body,
+    html: `<p>${body}</p>`,
+  };
+
+  if (pdfUri) {
+    const filePath = path.join(__dirname, 'temp', 'ticket.pdf');
+    
+    // Save base64 content as a PDF file
+    fs.writeFileSync(filePath, Buffer.from(pdfUri, 'base64'));
+
+    emailData.attachments = [
+      {
+        content: fs.readFileSync(filePath),  // Send file as attachment
+        filename: 'ticket.pdf',
+        type: 'application/pdf',
+        disposition: 'attachment',
+      },
+    ];
+  }
+
+  try {
+    const response = await mailerSend.send(emailData);  // Send email through MailerSend API
+    res.status(200).json({ success: true, message: 'Email sent successfully.' });
+  } catch (error) {
+    console.error('Email sending error:', error);
+    res.status(500).json({ success: false, message: 'Failed to send email.', error: error.message });
+  }
+});
 
 // สร้าง endpoint /order-status เพื่อส่งสถานะเป็น JSON กลับไปให้ Front-end
 app.get('/order-status', (req, res) => {
@@ -63,64 +110,75 @@ app.post("/create-token", async (req, res) => {
 
 app.post("/charge", async (req, res) => {
   try {
-    const { amount, token } = req.body;
+    const { amount, token, uri } = req.body;
     if (!token) {
       return res.status(400).json({ success: false, error: "Token is required" });
     }
 
     // คูณ amount กับ 100 เพื่อแปลงเป็นหน่วยสตางค์ (และใช้ parseInt เพื่อป้องกันการใช้ทศนิยม)
     const amountInCents = parseInt(amount * 100, 10); // แปลงเป็นจำนวนเต็ม (integer)
-
+    console.log('uri: ', uri);
     const charge = await omise.charges.create({
       amount: amountInCents,
       currency: "thb",
       card: token,
+      return_uri: "https://5fd4-184-22-134-134.ngrok-free.app/redirect",
     });
 
     res.json({ success: true, charge });
+    console.log(charge);
   } catch (error) {
     console.error('Error in charging: ', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-app.post('/omise/webhook', (req, res) => {
-  const event = req.body;
+app.get("/redirect", (req, res) => {
+  console.log("🔄 Omise Redirected:", req.query);
 
-  // Verify the webhook signature to make sure the event is from Omise
-  const isValid = omiseClient.webhooks.isValidSignature(event, req.headers['x-omise-signature']);
+  res.send(`
+    <!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Redirecting to App...</title>
+  <script>
+    function redirectToApp() {
+      const androidIntent = "intent://payment/success#Intent;scheme=thetrago;package=com.chayanin5678.TheTrago;end;";
+      const iosLink = "thetrago://payment/success";
+      const isAndroid = /android/i.test(navigator.userAgent);
+      
+      console.log("🔗 Redirecting...");
+      window.location.replace(isAndroid ? androidIntent : iosLink);
+    }
+    setTimeout(redirectToApp, 3000);
+  </script>
+</head>
+<body>
+  <h2>Redirecting to Home...</h2>
+  <p>If you are not redirected, <a href="javascript:redirectToApp();">click here</a>.</p>
+</body>
+</html>
 
-  if (!isValid) {
-    return res.status(400).send('Invalid webhook signature');
-  }
-
-  // Handle different types of events
-  switch (event.type) {
-    case 'charge.succeeded':
-      console.log('Charge succeeded:', event.data);
-      // Handle successful payment
-      break;
-    case 'charge.failed':
-      console.log('Charge failed:', event.data);
-      // Handle failed payment
-      break;
-    case 'customer.created':
-      console.log('Customer created:', event.data);
-      // Handle customer creation event
-      break;
-    case 'customer.updated':
-      console.log('Customer updated:', event.data);
-      // Handle customer update event
-      break;
-    default:
-      console.log('Unhandled event type:', event.type);
-  }
-
-  // Send a response back to Omise to acknowledge the webhook
-  res.status(200).send('Webhook received');
+  `);
 });
 
 
+
+app.post("/webhook", express.json(), (req, res) => {
+  console.log("🔔 Omise Webhook Received:", req.body);
+
+  const charge = req.body.data;
+  const success = charge.status === "successful";
+
+  console.log("✅ Payment Status:", charge.status);
+
+  // บันทึกสถานะการชำระเงินลงฐานข้อมูล (ถ้ามี)
+  // ตัวอย่าง: updateOrderStatus(charge.id, charge.status);
+
+  res.status(200).json({ received: true });
+});
 
 
 
@@ -512,14 +570,14 @@ app.post('/booking', (req, res) => {
   console.log("Client IP:", clientIp); // ✅ ใช้ console.log แทน print()
 
   const {
-      md_booking_code, md_booking_companyid, 
-      md_booking_paymentid, md_booking_boattypeid, md_booking_country, 
-      md_booking_countrycode, md_booking_round, md_booking_timetableid, 
-      md_booking_tel, md_booking_email, md_booking_price, 
-      md_booking_total, md_booking_currency, md_booking_net, 
-      md_booking_adult, md_booking_child, md_booking_day, 
-      md_booking_month, md_booking_year, md_booking_time, 
-      md_booking_date, md_booking_departdate, md_booking_departtime
+    md_booking_code, md_booking_companyid,
+    md_booking_paymentid, md_booking_boattypeid, md_booking_country,
+    md_booking_countrycode, md_booking_round, md_booking_timetableid,
+    md_booking_tel, md_booking_email, md_booking_price,
+    md_booking_total, md_booking_currency, md_booking_net,
+    md_booking_adult, md_booking_child, md_booking_day,
+    md_booking_month, md_booking_year, md_booking_time,
+    md_booking_date, md_booking_departdate, md_booking_departtime
   } = req.body;
 
   const query = `
@@ -536,24 +594,24 @@ app.post('/booking', (req, res) => {
 
 
   const values = [
-      md_booking_code, md_booking_companyid, 
-      md_booking_paymentid, md_booking_boattypeid, md_booking_country, 
-      md_booking_countrycode, md_booking_round, md_booking_timetableid, 
-      md_booking_tel, md_booking_email, md_booking_price, 
-      md_booking_total, md_booking_currency, md_booking_net, 
-      md_booking_adult, md_booking_child, md_booking_day, 
-      md_booking_month, md_booking_year, md_booking_time, 
-      md_booking_date, md_booking_departdate, md_booking_departtime,
-      clientIp
+    md_booking_code, md_booking_companyid,
+    md_booking_paymentid, md_booking_boattypeid, md_booking_country,
+    md_booking_countrycode, md_booking_round, md_booking_timetableid,
+    md_booking_tel, md_booking_email, md_booking_price,
+    md_booking_total, md_booking_currency, md_booking_net,
+    md_booking_adult, md_booking_child, md_booking_day,
+    md_booking_month, md_booking_year, md_booking_time,
+    md_booking_date, md_booking_departdate, md_booking_departtime,
+    clientIp
   ];
 
   pool.query(query, values, (err, results) => {
-      if (err) {
-          console.error("Error executing query:", err);
-          res.status(500).json({ status: "error", message: "Database error" });
-      } else {
-          res.status(200).json({ status: "success", data: results });
-      }
+    if (err) {
+      console.error("Error executing query:", err);
+      res.status(500).json({ status: "error", message: "Database error" });
+    } else {
+      res.status(200).json({ status: "success", data: results });
+    }
   });
 });
 
