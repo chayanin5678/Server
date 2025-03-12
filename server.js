@@ -11,17 +11,28 @@ const axios = require("axios");
 const bodyParser = require('body-parser');
 const { v4: uuidv4 } = require('uuid');
 const Omise = require("omise");
-const { MailerSend } = require('mailersend');
+const nodemailer = require('nodemailer');
 const fs = require('fs');
 const path = require('path');
+const punycode = require('punycode/');
+const multer = require('multer');
+
+const storage = multer.memoryStorage(); // จัดเก็บไฟล์ใน memory
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: 100 * 1024 * 1024 } // กำหนดขนาดไฟล์สูงสุดที่ 100MB
+});
+
 require("dotenv").config();
 let orderStatus = "Pending";
 // เปิดใช้งาน CORS
 app.use(cors());
 app.use(bodyParser.json());
-app.use(express.json());
-app.use(express.json({ limit: '50mb' })); // Allow larger payloads
-app.use(bodyParser.json({ limit: '50mb' })); // For legacy bodyParser support
+app.use(express.json({ limit: '500mb' }));  // Allow large JSON payloads (100MB)
+app.use(express.urlencoded({ limit: '500mb', extended: true }));  // Allow large form-data payloads (100MB)
+app.use(bodyParser.json({ limit: '500mb' }));  // Allow large JSON payloads
+app.use(bodyParser.urlencoded({ limit: '500mb', extended: true }));  // Allow large form data payloads
+
 app.use((req, res, next) => {
   res.setHeader("ngrok-skip-browser-warning", "true"); // ✅ ข้าม Warning Page
   next();
@@ -48,43 +59,53 @@ const omise = Omise({
   secretKey: process.env.OMISE_SECRET_KEY, // ใส่ Secret Key ของคุณ
 });
 
-const mailerSend = new MailerSend({ apiKey: process.env.MAILERSEND_API_KEY });
+const transporter = nodemailer.createTransport({
+  service: 'gmail', // สามารถเปลี่ยนเป็นบริการ SMTP ที่คุณใช้
+  auth: {
+    user: process.env.SENDER_EMAIL, // ใส่อีเมลที่ใช้ส่ง
+    pass: process.env.SENDER_PASSWORD // ใส่รหัสผ่าน
+  }
+});
 
-app.post('/send-email', async (req, res) => {
-  const { recipientEmail, subject, body, pdfUri } = req.body;
-
-  // Create the email object
-  const emailData = {
-    from: process.env.SENDER_EMAIL,
-    to: recipientEmail,
-    subject: subject,
-    text: body,
-    html: `<p>${body}</p>`,
+const sendEmailWithAttachment = (fileBuffer, recipientEmail) => {
+  const mailOptions = {
+    from: process.env.SENDER_EMAIL, // อีเมลที่ใช้ส่ง
+    to: recipientEmail,  // อีเมลผู้รับ
+    subject: 'Your Travel Ticket',
+    text: 'Here is your travel ticket!',
+    html: '<p>Here is your travel ticket!</p>',
+    attachments: [
+      {
+        filename: 'ticket.pdf',
+        content: fileBuffer, // แนบไฟล์ PDF
+        encoding: 'base64'  // ใช้ base64 encoding ถ้าเป็นไฟล์ใน buffer
+      }
+    ]
   };
 
-  if (pdfUri) {
-    const filePath = path.join(__dirname, 'temp', 'ticket.pdf');
-    
-    // Save base64 content as a PDF file
-    fs.writeFileSync(filePath, Buffer.from(pdfUri, 'base64'));
+  // ส่งอีเมล
+  transporter.sendMail(mailOptions, (error, info) => {
+    if (error) {
+      console.error('Error sending email:', error);
+    } else {
+      console.log('Email sent: ' + info.response);
+    }
+  });
+};
 
-    emailData.attachments = [
-      {
-        content: fs.readFileSync(filePath),  // Send file as attachment
-        filename: 'ticket.pdf',
-        type: 'application/pdf',
-        disposition: 'attachment',
-      },
-    ];
+// ตัวอย่างของฟังก์ชันที่ใช้ใน API
+app.post('/upload', upload.single('file'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).send('No file uploaded');
   }
 
-  try {
-    const response = await mailerSend.send(emailData);  // Send email through MailerSend API
-    res.status(200).json({ success: true, message: 'Email sent successfully.' });
-  } catch (error) {
-    console.error('Email sending error:', error);
-    res.status(500).json({ success: false, message: 'Failed to send email.', error: error.message });
+  const recipientEmail = req.body.email;
+  if (!recipientEmail) {
+    return res.status(400).send('Email is required');
   }
+
+  // ส่งไฟล์ไปยังอีเมล
+  sendEmailWithAttachment(req.file.buffer, recipientEmail);
 });
 
 // สร้าง endpoint /order-status เพื่อส่งสถานะเป็น JSON กลับไปให้ Front-end
@@ -122,7 +143,7 @@ app.post("/charge", async (req, res) => {
       amount: amountInCents,
       currency: "thb",
       card: token,
-      return_uri: "https://5fd4-184-22-134-134.ngrok-free.app/redirect",
+      return_uri: "https://670c-1-20-61-190.ngrok-free.app/redirect",
     });
 
     res.json({ success: true, charge });
