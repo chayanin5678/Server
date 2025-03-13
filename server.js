@@ -4,34 +4,31 @@ const mysql = require('mysql2');
 const cors = require('cors');
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-const app = express();
-const crypto = require("crypto");
 const port = process.env.PORT || 5000;
-const axios = require("axios");
-const bodyParser = require('body-parser');
-const { v4: uuidv4 } = require('uuid');
 const Omise = require("omise");
 const nodemailer = require('nodemailer');
-const fs = require('fs');
-const path = require('path');
-const punycode = require('punycode/');
 const multer = require('multer');
+const { generatePDF, sendTicketEmail } = require('./mailer');
 
-const storage = multer.memoryStorage(); // จัดเก็บไฟล์ใน memory
-const upload = multer({
-  storage: storage,
-  limits: { fileSize: 100 * 1024 * 1024 } // กำหนดขนาดไฟล์สูงสุดที่ 100MB
-});
+const app = express();
+const bodyParser = require('body-parser');
+
 
 require("dotenv").config();
 let orderStatus = "Pending";
 // เปิดใช้งาน CORS
 app.use(cors());
 app.use(bodyParser.json());
-app.use(express.json({ limit: '500mb' }));  // Allow large JSON payloads (100MB)
-app.use(express.urlencoded({ limit: '500mb', extended: true }));  // Allow large form-data payloads (100MB)
-app.use(bodyParser.json({ limit: '500mb' }));  // Allow large JSON payloads
-app.use(bodyParser.urlencoded({ limit: '500mb', extended: true }));  // Allow large form data payloads
+app.use(express.json({ limit: '100mb' }));  // Allow large JSON payloads (100MB)
+app.use(express.urlencoded({ limit: '100mb', extended: true }));  // Allow large form-data payloads (100MB)
+app.use(bodyParser.json({ limit: '100mb' }));  // Allow large JSON payloads
+app.use(bodyParser.urlencoded({ limit: '100mb', extended: true }));  // Allow large form data payloads
+app.use(bodyParser.raw({ limit: '100mb' }));
+const storage = multer.memoryStorage(); // จัดเก็บไฟล์ใน memory
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: 100 * 1024 * 1024 } // กำหนดขนาดไฟล์สูงสุดที่ 100MB
+});
 
 app.use((req, res, next) => {
   res.setHeader("ngrok-skip-browser-warning", "true"); // ✅ ข้าม Warning Page
@@ -59,54 +56,19 @@ const omise = Omise({
   secretKey: process.env.OMISE_SECRET_KEY, // ใส่ Secret Key ของคุณ
 });
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail', // สามารถเปลี่ยนเป็นบริการ SMTP ที่คุณใช้
-  auth: {
-    user: process.env.SENDER_EMAIL, // ใส่อีเมลที่ใช้ส่ง
-    pass: process.env.SENDER_PASSWORD // ใส่รหัสผ่าน
-  }
+app.post('/send-ticket', async (req, res) => {
+  const { email, htmlContent } = req.body;
+
+  // สร้างไฟล์ PDF จาก HTML
+  const ticketPath = './ticket.pdf';
+  await generatePDF(htmlContent, ticketPath);
+
+  // ส่งอีเมลพร้อมแนบไฟล์ PDF
+  sendTicketEmail(email, 'Your Ticket', 'Please find your ticket attached.', ticketPath);
+
+  res.status(200).send({ message: 'Ticket created and email sent successfully' });
 });
 
-const sendEmailWithAttachment = (fileBuffer, recipientEmail) => {
-  const mailOptions = {
-    from: process.env.SENDER_EMAIL, // อีเมลที่ใช้ส่ง
-    to: recipientEmail,  // อีเมลผู้รับ
-    subject: 'Your Travel Ticket',
-    text: 'Here is your travel ticket!',
-    html: '<p>Here is your travel ticket!</p>',
-    attachments: [
-      {
-        filename: 'ticket.pdf',
-        content: fileBuffer, // แนบไฟล์ PDF
-        encoding: 'base64'  // ใช้ base64 encoding ถ้าเป็นไฟล์ใน buffer
-      }
-    ]
-  };
-
-  // ส่งอีเมล
-  transporter.sendMail(mailOptions, (error, info) => {
-    if (error) {
-      console.error('Error sending email:', error);
-    } else {
-      console.log('Email sent: ' + info.response);
-    }
-  });
-};
-
-// ตัวอย่างของฟังก์ชันที่ใช้ใน API
-app.post('/upload', upload.single('file'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).send('No file uploaded');
-  }
-
-  const recipientEmail = req.body.email;
-  if (!recipientEmail) {
-    return res.status(400).send('Email is required');
-  }
-
-  // ส่งไฟล์ไปยังอีเมล
-  sendEmailWithAttachment(req.file.buffer, recipientEmail);
-});
 
 // สร้าง endpoint /order-status เพื่อส่งสถานะเป็น JSON กลับไปให้ Front-end
 app.get('/order-status', (req, res) => {
@@ -131,19 +93,19 @@ app.post("/create-token", async (req, res) => {
 
 app.post("/charge", async (req, res) => {
   try {
-    const { amount, token, uri } = req.body;
+    const { amount, token, return_uri } = req.body;
     if (!token) {
       return res.status(400).json({ success: false, error: "Token is required" });
     }
 
     // คูณ amount กับ 100 เพื่อแปลงเป็นหน่วยสตางค์ (และใช้ parseInt เพื่อป้องกันการใช้ทศนิยม)
     const amountInCents = parseInt(amount * 100, 10); // แปลงเป็นจำนวนเต็ม (integer)
-    console.log('uri: ', uri);
+    console.log('uri: ', return_uri);
     const charge = await omise.charges.create({
       amount: amountInCents,
       currency: "thb",
       card: token,
-      return_uri: "https://670c-1-20-61-190.ngrok-free.app/redirect",
+      return_uri: return_uri,
     });
 
     res.json({ success: true, charge });
