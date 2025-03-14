@@ -40,7 +40,7 @@ const pool = mysql.createPool({
   host: 'localhost',
   user: 'root',
   password: '',
-  database: 'thailandferry',
+  database: 'tragoxc1_thailandferry',
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0
@@ -263,7 +263,7 @@ app.get('/end/:md_timetable_startid', (req, res) => {
 
 app.get('/search/:md_timetable_startid/:md_timetable_endid/:md_boatstop_date', (req, res) => {
   const { md_timetable_startid, md_timetable_endid, md_boatstop_date } = req.params; // รับค่า startid และ endid
-
+ console.log(md_timetable_startid,md_timetable_endid,md_boatstop_date);
   const query = `
     SELECT 
       a.*,
@@ -317,7 +317,9 @@ app.get('/search/:md_timetable_startid/:md_timetable_endid/:md_boatstop_date', (
       a.md_timetable_startid = ? AND
       a.md_timetable_endid = ? AND
       j.md_boatstop_date !=  ?
-      LIMIT 100
+    ORDER BY 
+      md_timetable_departuretime ASC
+    LIMIT 100
   `;
 
   pool.query(query, [md_timetable_startid, md_timetable_endid, md_boatstop_date], (err, results) => {
