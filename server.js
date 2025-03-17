@@ -263,7 +263,7 @@ app.get('/end/:md_timetable_startid', (req, res) => {
 
 app.get('/search/:md_timetable_startid/:md_timetable_endid/:md_boatstop_date', (req, res) => {
   const { md_timetable_startid, md_timetable_endid, md_boatstop_date } = req.params; // รับค่า startid และ endid
- console.log(md_timetable_startid,md_timetable_endid,md_boatstop_date);
+  console.log(md_timetable_startid, md_timetable_endid, md_boatstop_date);
   const query = `
     SELECT 
       a.*,
@@ -274,7 +274,8 @@ app.get('/search/:md_timetable_startid/:md_timetable_endid/:md_boatstop_date', (
       f.md_seat_nameeng,
       g.md_boattype_nameeng,
       h.md_company_nameeng,
-      i.md_package_nameeng
+      i.md_package_nameeng,
+      k.md_timetabledetail_detaileng1
     FROM 
       md_timetable AS a 
     INNER JOIN 
@@ -313,6 +314,12 @@ app.get('/search/:md_timetable_startid/:md_timetable_endid/:md_boatstop_date', (
       md_boatstop AS j
     ON
       a.md_timetable_id = j.md_boatstop_timetableid
+    INNER JOIN
+      md_timetabledetail AS k
+    ON
+      a.md_timetable_companyid = k.md_timetabledetail_companyid AND
+      a.md_timetable_startid = k.md_timetabledetail_startid AND
+      a.md_timetable_endid = k.md_timetabledetail_endid
     WHERE 
       a.md_timetable_startid = ? AND
       a.md_timetable_endid = ? AND
