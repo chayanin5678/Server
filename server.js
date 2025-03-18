@@ -319,7 +319,8 @@ app.get('/search/:md_timetable_startid/:md_timetable_endid/:md_boatstop_date', (
     ON
       a.md_timetable_companyid = k.md_timetabledetail_companyid AND
       a.md_timetable_startid = k.md_timetabledetail_startid AND
-      a.md_timetable_endid = k.md_timetabledetail_endid
+      a.md_timetable_endid = k.md_timetabledetail_endid AND
+      a.md_timetable_boattypeid = k.md_timetabledetail_boattypeid
     WHERE 
       a.md_timetable_startid = ? AND
       a.md_timetable_endid = ? AND
